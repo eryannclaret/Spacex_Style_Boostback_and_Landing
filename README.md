@@ -11,7 +11,7 @@ Make sure you have the lib in script folder and to have a acc and grav sensors o
  - Orbit : 50%
 # Falcon-9 :
  - Boostback : 60% 
- - Booster landing : 99%
+ - Booster landing : 100%
  - Buoy cam : 20%
 
  # Dependencies :
