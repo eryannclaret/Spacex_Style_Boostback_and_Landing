@@ -1,113 +1,117 @@
 clearscreen.
-//------------------------Variables------------------------\\
-
 runOncePath("lib").
 
-set oneengine to false.
+//------------------------Variables------------------------\\
+
+set shipbox to ship:bounds.
+lock h to shipbox:bottomaltradar.
 set landingsite to targetland().
-set upvec to ship:up:vector.
-if landingsite:lat = vessel("ASOG"):geoposition:lat {
-    lock LZOFF to vessel("ASOG"):altitude.
-} else {
-    if hastarget {
-        lock LZOFF to target:altitude.
-    } else {
-        lock LZOFF to max(landingsite:terrainheight,0).
-    }
-}
+set phase to 0. // phase 0 : coasting phase 1 : braking phase 2 : landing
+
 //------------------------Functions------------------------\\
 
 function aoa { 
 
-    local retrangle is vang(-ship:velocity:surface,upvec). // angle to be like ship:up
-    local ang is clamp(round(vang(-ship:velocity:surface,-ship:velocity:surface+errorvector(landingsite))),0,10). // Kinda like the errorangle you want to cancel
-    local tiltangle is round(vang(errorvector(landingsite)-ship:velocity:surface,-ship:velocity:surface)). // The angle that you need for tilting toward landingsite
+    if phase = 1 {
+        return 0. // braking before final corrections
 
-    if throttle > 0 {
-        if oneengine {
-            set maoa to clamp(tiltangle,0,retrangle*2). // For those last corrections, you are clamped between retrograde and 5*the angle to be up
-        } else {
-            set maoa to 0.
-        }
     } else {
-        set maoa to -ang. // If it don't work try just ang
+        local ang is clamp(round(vang(-ship:velocity:surface,-ship:velocity:surface+errorvector(landingsite))),0,10). 
+        return -ang. // if it doesn't work for you try ang
     }
-    return maoa.
 }
-
-function getSteering { // Modified version of Edwin Roberts one
-    rcscorrections(1000000, landingsite).
-    debug(landingsite).
-    // debugvisual(landingsite).
-
-    if oneengine = false {
+    
+function atmSteer { // from edwin roberts
 
         local velVector is -ship:velocity:surface.
         local correctionVector is errorvector(landingsite).
         set result to velVector + correctionVector.
-        local aoa is aoa().
-        global burnalt is (ship:velocity:surface:mag^2 * (2 * (ship:maxThrust / ship:mass) - 3 * ship:sensors:grav:mag)) / (2 * ((ship:maxThrust / ship:mass) - ship:sensors:grav:mag) * ((ship:maxThrust / ship:mass) - 3 * ship:sensors:grav:mag)).
-        // Burn altitude calculation, knowing that during the burn you will go from 3 to 1 engine (simplified version of (burnaltonengine + burnaltthreengine)/2
-        
-        if vang(result, velVector) > aoa {
-            set result to velVector:normalized + tan(aoa) * correctionVector:normalized.
+        local angle is aoa(). 
+        if vang(result, velVector) > angle {
+            set result to velVector:normalized + tan(angle) * correctionVector:normalized.
         }
-    
-    } else {
-        
-        local currentTilt is clamp(ship:bounds:bottomaltradar / burnalt, 0, 1) * aoa().
-        local aTot is ship:availablethrust / ship:mass.
-        local maxD is sqrt(aTot^2 - ship:sensors:grav:mag^2).
-        local dist is vxcl(upvec, landingsite:position):mag.
 
-        if dist > (ship:groundspeed^2) / (2 * maxD) and dist > 5 {
-            set result to vxcl(upvec, landingsite:position):normalized + upvec / tan(max(0.1, currentTilt)).
-        } else {
-            local aH is clamp(ship:groundspeed - sqrt(2 * maxD * dist), 0, aTot * sin(currentTilt)).
-            set result to -vxcl(upvec, ship:velocity:surface):normalized * aH + upvec * sqrt(max(0, aTot^2 - aH^2)).
-        }
-    }
-        return lookDirUp(result,facing:topvector).
+        lock steering to lookDirUp(result,facing:topvector).
 }
 
-//--Throttle--\\
+function landSteer { // tilt towards the landingsite to land precisely
 
-function reentryburn {
-    lock steering to up.
-    wait until vang(ship:facing:forevector,up:vector) <= 10.
-    lock throttle to 0.5.                                                        // REENTRY BURN IS WORK IN PROGRESS, I WOULD ADVISE NOT USE IT
-    wait until ship:verticalspeed >=-800 or alt:radar <=60000.
-    lock throttle to 0.
+    local aTot is ship:availablethrust / ship:mass.
+    lock aVreq to ship:verticalspeed^2 / (2 * max(0.1, h)) + ship:sensors:grav:mag.
+    local aHmax is sqrt(max(0, aTot^2 - aVreq^2)).
+
+    local vs is abs(ship:verticalspeed).
+    local tgo is max(0.1, 2 * h / max(0.1, vs)).
+    
+    local r0 is vxcl(ship:up:vector, landingsite:position).
+    local v0 is vxcl(ship:up:vector, ship:velocity:surface).
+    local zem is r0 - v0 * tgo.
+    local aH_vec is (6 * zem / tgo^2) + (2 * v0 / tgo).
+
+    local aHmag is min(aH_vec:mag, aHmax).
+    if aH_vec:mag > 0.001 { set aH_vec to aH_vec:normalized * aHmag. }
+
+    lock aVavail to sqrt(max(0.0001, aTot^2 - aHmag^2)).
+
+    lock result to aH_vec + ship:up:vector * aVavail.
+
+    lock steering to lookDirUp(result, facing:topvector).
 }
 
 function landingburn {
-wait until alt:radar <= 1000. // Safety Measure
-wait until alt:radar <= burnalt.
-    
-    lock throttle to clamp(((ship:velocity:surface:mag^2)/(2*ship:sensors:grav:mag*(ship:bounds:bottomaltradar-LZOFF))),0,1).
 
-    until ship:verticalspeed >-5 {
-        
-        if oneengine = false and ship:verticalspeed >=-150 and (SHIP:SENSORS:ACC:MAG / CONSTANT:g0) < 3 {
-            ship:partsnamed("TE.19.F9.S1.Engine")[0]:getmodule("ModuleTundraEngineSwitch"):doevent("next engine mode").
-            set oneengine to true.
-            gear on.
-        }
-
+    if phase=1 {
+        lock throttle to clamp(((ship:velocity:surface:mag^2)/(2*ship:sensors:grav:mag*(h))),0,1).
+    } else if phase=2 {
+        lock throttle to clamp( aVreq / max(0.0001, aVavail), 0, 1).
+    } else {
+        lock throttle to 0.
     }
-    
-toggle brakes.
-    toggle ag10.
+
 }
 
-//----------------------------------------------------MAIN----------------------------------------------------\\
+function burnAltitude {
+    local aMax is ship:maxThrust / ship:mass.
+    local gx is ship:sensors:grav:mag.
+    return (ship:velocity:surface:mag^2 * (2*aMax - 3*gx)) / (2*(aMax - gx)*(aMax - 3*gx)). // simplified version of (burnalt one engine + burnalt three engine)/2
+}
 
-brakes on.
-lock steering to srfRetrograde.
-wait until alt:radar <=80000.
-lock steering to getsteering().
-// reentryburn().
-landingburn().
-wait until ag10.
+function main {
+
+    brakes on.
+    lock steering to srfRetrograde.
+    wait until alt:radar <= 80000.
+
+    until ship:verticalspeed >= 0 or ag10 or ship:status = "LANDED" {
+        debug(landingsite).
+        rcscorrections(80000,landingsite).
+
+        if phase = 0 and alt:radar <= burnAltitude() and alt:radar <= 5000 {
+            set phase to 1.
+        }
+
+        if phase = 2 {
+            landSteer().
+            landingburn().
+
+        } else if phase = 1 {
+            atmSteer().
+            landingburn().
+
+            if ship:verticalspeed >= -150 and (ship:sensors:acc:mag / constant:g0) < 3 {
+                ship:partsnamed("TE.19.F9.S1.Engine")[0]:getmodule("ModuleTundraEngineSwitch"):doevent("next engine mode").
+                gear on.
+                set phase to 2.
+            }
+
+        } else {
+            atmSteer().
+        }
+
+        wait 0.
+    }
+
+}
+
+main().
 clearscreen.
-// falconlanded().
