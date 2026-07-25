@@ -1,119 +1,142 @@
-//----------------------------------------------------------------------------------LANDING SCRIPT-------------------------------------------------------------------------------\\
 clearscreen.
-//--Variables--\
-set upvec to ship:up:vector.
-
-//--Lib calls--\\
 
 runOncePath("lib").
+
+//------------------------Variables------------------------\\
+
+
 set landingsite to targetland().
-
-//--Booster--\\
-set threengines to false.
 set cluster to ship:partsnamed("SEP.25.BOOSTER.CLUSTER")[0]:getmodule("ModuleSEPEngineSwitch").
-cluster:doevent("previous engine mode"). // 13 engines
-set boosteroffset to 70. // booster height
+set boosterheight to 69. // catchpins height
+set braking to false. // 13 engines phase
+set threengines to false. // final corrections
 set shipbox to ship:bounds.
-lock h to shipbox:bottomaltradar+boosteroffset. // The top altitude of the booster
-set armsheight to 130+max(landingsite:terrainheight,0).
+lock h to shipbox:bottomaltradar+boosterheight. // altitude of the catchpins
+set armsheight to 115+max(landingsite:terrainheight,0). // 115 works well but it's hard to know the height of the arms in ksp
 
-
-//--------Functions--------\\
-
-//--Steering--\\
+//------------------------Functions------------------------\\
 
 function aoa { 
 
-    if throttle > 0 {
-        // local upangle is vang(-ship:velocity:surface, upvec).
-
-        if threengines {
-            // local tiltangle is vang(errorvector(landingsite)-ship:velocity:surface,-ship:velocity:surface).
-            set angle to 5.
-        } else {
-            set angle to 0.
-        }
+    if braking {
+        return vang(-ship:velocity:surface, ship:up:vector). // Angle between retrograde and up (angle to be like ship:up) 
     } else {
-        set angle to -clamp(round(vang(-ship:velocity:surface,-ship:velocity:surface+2*errorvector(landingsite))),0,10).
-    } 
-
-    return angle.
+        return -clamp(round(vang(-ship:velocity:surface,-ship:velocity:surface+0.5*errorvector(landingsite))),0,10). // if it doesn't work for you try ang, change 0.5 to have more or less corrections but 0.5 works well
+    }
 }
+    
+function atmSteer { // from edwin roberts
 
-function getSteering {
-    rcscorrections(50000, landingsite).
-    debug(landingsite).
-
-
-    if threengines = false {
-
-        local velVector is -ship:velocity:surface.
-        local correctionVector is errorvector(landingsite).
-        set result to velVector + correctionVector.
-        local aoa is aoa().
-        global burnalt is (ship:velocity:surface:mag^2)/(2*((ship:maxThrust/ship:mass)-ship:sensors:grav:mag)).
-        
-        if vang(result, velVector) > aoa {
-            set result to velVector:normalized + tan(aoa) * correctionVector:normalized.
-        }
-        
-    } else {
-        
-        local currentTilt is clamp(h-armsheight / burnalt, 0, 1) * aoa().
-        local aTot is ship:availablethrust / ship:mass.
-        local maxD is sqrt(aTot^2 - ship:sensors:grav:mag^2).
-        local dist is vxcl(upvec, landingsite:position):mag.
-
-        if dist > (ship:groundspeed^2) / (2 * maxD) and dist > 10 {
-            set result to vxcl(upvec, landingsite:position):normalized + upvec / tan(max(0.1, currentTilt)).
-        } else {
-            local aH is clamp(ship:groundspeed - sqrt(2 * maxD * dist), 0, aTot * sin(currentTilt)).
-            set result to -vxcl(upvec, ship:velocity:surface):normalized * aH + upvec * sqrt(max(0, aTot^2 - aH^2)).
-        }
+    local velVector is -ship:velocity:surface.
+    local correctionVector is errorvector(landingsite).
+    set result to velVector + correctionVector.
+    local angle is aoa(). 
+    if vang(result, velVector) > angle {
+        set result to velVector:normalized + tan(angle) * correctionVector:normalized.
     }
 
     local val is lookdirup(result, facing:topvector).
     local p is val:pitch.
     local y is val:yaw.
 
-return R(p, y, 270).
+    lock steering to R(p,y,270). // QD facing tower
 
 }
 
-//--Throttle--\\
+function landSteer { // tilt towards the landingsite to land precisely
+
+    local aTot is ship:availablethrust / ship:mass.
+    lock aVreq to ship:verticalspeed^2 / (2 * max(0.1, h-armsheight)) + ship:sensors:grav:mag.
+    local aHmax is sqrt(max(0, aTot^2 - aVreq^2)).
+    local tgo is max(0.1, 2 * (h-armsheight) / max(0.1, abs(ship:verticalspeed))).
+    local zem is vxcl(ship:up:vector, landingsite:position) - vxcl(ship:up:vector, ship:velocity:surface) * tgo.
+    local aH_vec is (6 * zem / tgo^2) + (2 * vxcl(ship:up:vector, ship:velocity:surface) / tgo).
+    local aHmag is min(aH_vec:mag, aHmax).
+    
+    local straightenrange is 50. // at what altitude prior to armsheight you want to start not correcting anymore to just point ship:up 
+    local minStraighten is 0.15. // What % of correction you want to keep anyways
+    local straightenfactor is minStraighten + (1 - minStraighten) * clamp((h - armsheight) / straightenrange, 0, 1)^2.
+    set aHmag to aHmag * straightenfactor.
+
+    if aH_vec:mag > 0.001 {
+        set aH_vec to aH_vec:normalized * aHmag.
+    }
+    
+    lock aVavail to sqrt(max(0.0001, aTot^2 - aHmag^2)).
+    lock result to aH_vec + ship:up:vector * aVavail.
+
+    lock steering to lookdirup(result, facing:topvector). 
+
+}
 
 function landingburn {
-    wait until h <= 2000.
-    wait until h <= max(800,burnalt).
-    local mn is 0.
-    lock throttle to clamp((ship:velocity:surface:mag^2) / (2 * ship:sensors:grav:mag * (h - armsheight)), mn, 1).
 
-    until ship:verticalSpeed >= 0 {
-        if not threengines and ship:verticalspeed >= -100 {
-            cluster:doevent("next engine mode").
-            set threengines to true.
-        }
+    // lock throttle to clamp(aVreq / max(0.0001, aVavail), 0, 1).
 
-        if ship:verticalspeed <= -300 {
-            set mn to 0.5.
-        } else if ship:verticalspeed <= -100 {
-            set mn to 0.
-        }
-        wait 0.
+    if threengines or braking {
+        lock throttle to clamp(((ship:velocity:surface:mag^2)/(2*ship:sensors:grav:mag*(h-armsheight))),0,1).
+    } else {
+        lock throttle to 0.
     }
 
-    RCS off.
-    stage.
-
-    heavycatched().
-    wait 15.
-    toggle ag2.
-    wait until ship:liquidfuel <= 10 or AG10.
-    toggle ag10.
 }
-//----------------------------------------------------------------------------------MAIN-------------------------------------------------------------------------------\\
-RCS ON.
-wait until ship:verticalSpeed <0.
-lock steering to getsteering().
-landingburn().
-wait until ag10. // To end just press ag10.
+
+function mechazilla { // Mechazilla signal
+    set message to "Close chopsticks".
+    SET C TO VESSEL("superheavy Base"):CONNECTION.
+    IF C:SENDMESSAGE(MESSAGE) {
+        PRINT "" AT (0,9).
+    }
+}
+
+
+function burnAltitude { // Burn altitude calculation, it's the simplified calcul of (burnalt 13 engines + burnalt 3 engines)/2
+    local aMax is ship:maxThrust / ship:mass.
+    local gx is ship:sensors:grav:mag.
+    return max((13 * ship:velocity:surface:mag^2) / (2 * (8 * aMax - 13 * gx)),800).
+}
+
+function main {
+    // Autamtically set you to 13 engines
+     if ship:maxthrust > 30000 {
+      cluster:doevent("next engine mode").
+      } else if ship:maxthrust < 7000 {
+      cluster:doevent("previous engine mode").
+      }
+
+    lock steering to srfRetrograde.
+    wait until alt:radar <= 80000. // Correction debuts
+
+    until h <= armsheight or ag10 {
+        debug(landingsite).
+
+        if (braking=false and alt:radar <= burnAltitude() and alt:radar <=1000){
+            set braking to true.
+        }
+
+        if braking and threengines=false and ship:verticalSpeed >=-150 {
+            set threengines to true.
+            cluster:doevent("next engine mode").
+        }
+
+        if h <= 200 {
+            mechazilla().
+        }
+
+        if threengines {
+            landSteer().
+            landingburn().
+        } else if braking {
+            atmSteer().
+            landingburn().
+        } else {
+            atmSteer().
+        }
+
+        wait 0.05.
+    }
+}
+
+main().
+
+clearscreen.
