@@ -5,8 +5,8 @@ Make sure you have the lib in script folder and to have a acc and grav sensors o
 # Codes : 
 # Starship-Superheavy :
  - Mechazilla : 100%
- - Booster landing : 95% 
- - Booster Boostback : 90% 
+ - Booster landing : 100% 
+ - Booster Boostback : 100% 
  - Ship landing : 0%
  - Orbit : 50%
 # Falcon-9 :
