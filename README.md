@@ -1,6 +1,6 @@
 I highly recommend using Visual studio code for reading.
 If you need help : add me : "wigludxombu" on discord
-Make sure you have the lib in script folder and to have a acc and grav sensors on your vessel
+Make sure you have the lib in script folder and to have all sensors on your vessel
 
 # Codes : 
 # Starship-Superheavy :
