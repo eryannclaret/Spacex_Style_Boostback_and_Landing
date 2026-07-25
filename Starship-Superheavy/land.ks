@@ -54,7 +54,7 @@ function landSteer { // tilt towards the landingsite to land precisely
     local aHmag is min(aH_vec:mag, aHmax).
     
     local straightenrange is 50. // at what altitude prior to armsheight you want to start not correcting anymore to just point ship:up 
-    local minStraighten is 0.15. // What % of correction you want to keep anyways
+    local minStraighten is 0.2. // What % of correction you want to keep anyways
     local straightenfactor is minStraighten + (1 - minStraighten) * clamp((h - armsheight) / straightenrange, 0, 1)^2.
     set aHmag to aHmag * straightenfactor.
 
@@ -82,11 +82,21 @@ function landingburn {
 }
 
 function mechazilla { // Mechazilla signal
-    set message to "Close chopsticks".
-    SET C TO VESSEL("superheavy Base"):CONNECTION.
-    IF C:SENDMESSAGE(MESSAGE) {
-        PRINT "" AT (0,9).
+
+    if ag10 or abs(ship:verticalspeed) <=5 { // Flight end
+    clearscreen.
+        set message to "ENDFLIGHT".
+    } else if h<= 200{
+        set message to "CATCH". // Catch procedure
+    } else {
+        set message to "CONNECTING".
     }
+
+    SET C TO VESSEL("superheavy Base"):CONNECTION.
+    IF C:SENDMESSAGE(message) {
+        PRINT message AT (0,9).
+    }
+
 }
 
 
@@ -107,7 +117,7 @@ function main {
     lock steering to srfRetrograde.
     wait until alt:radar <= 80000. // Correction debuts
 
-    until h <= armsheight or ag10 {
+    until h <= armsheight or ag10{
         debug(landingsite).
 
         if (braking=false and alt:radar <= burnAltitude() and alt:radar <=1000){
@@ -119,13 +129,10 @@ function main {
             cluster:doevent("next engine mode").
         }
 
-        if h <= 200 {
-            mechazilla().
-        }
-
         if threengines {
             landSteer().
             landingburn().
+            mechazilla().
         } else if braking {
             atmSteer().
             landingburn().
