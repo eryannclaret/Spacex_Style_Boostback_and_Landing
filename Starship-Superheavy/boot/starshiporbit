@@ -1,3 +1,6 @@
+// Boot this in the starship for it to go on itself after separation
+
+
 //--Variables--\\
 set meco to 70000. // Boostback start altitude.
 set ap to 200000.
