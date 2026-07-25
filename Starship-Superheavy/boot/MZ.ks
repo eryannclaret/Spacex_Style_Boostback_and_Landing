@@ -1,9 +1,8 @@
-// Put this in boot folder, and make the tower run this at launch on a KAL9000
+// Put this in boot folder, and make the tower run this at launch
 
 //--Variables--\\
-
 // set sh to Vessel("Starship").
-set sh to Vessel("Superheavy").
+set sh to Vessel("superheavy").
 
 set Mechazilla to ship:partsnamed("SLE.SS.OLIT.MZ")[0].
 set MZ to Mechazilla:getmodule("ModuleSLEController").
@@ -19,7 +18,7 @@ set shipvec TO VXCL(ship:facing:forevector,ship:facing:starvector).
 set northComponent TO -ROUND(VDOT(shipvec, northVector)).
 set eastComponent TO ROUND(VDOT(shipvec, eastVector)).
 
-set dt to 0.05.
+set dt to 0.04.
 
 wait until sh:verticalspeed <=-10.
 //--Main--\\
@@ -41,10 +40,19 @@ until false {
   } else {
     set ang to angleoffset.
   }
-
+  
+  set endflight to false.
   if NOT SHIP:MESSAGES:EMPTY {
-    MZ:doevent("close arms").
-    wait until sh:velocity:surface:mag <= 5.
+    set mess to SHIP:MESSAGES:POP:CONTENT.
+    if mess="CATCH"{
+        MZ:doevent("close arms").
+    } else if mess ="ENDFLIGHT" {
+      set endflight to true.
+    } else {
+      print "waiting for signal".
+    }
+  }
+  if endflight {
     break.
   }
   MZ:setfield("target angle",clampang). // Where does the arms need to point
