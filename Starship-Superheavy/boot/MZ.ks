@@ -2,7 +2,7 @@
 
 //--Variables--\\
 // set sh to Vessel("Starship").
-set sh to Vessel("Heavy Booster").
+set sh to Vessel("Heavy Booster"). // Change the name to your superheavy vessel name
 
 set Mechazilla to ship:partsnamed("SLE.SS.OLIT.MZ")[0].
 set MZ to Mechazilla:getmodule("ModuleSLEController").
@@ -17,15 +17,16 @@ set shipvec TO VXCL(ship:facing:forevector,ship:facing:starvector).
 set northComponent TO -ROUND(VDOT(shipvec, northVector)).
 set eastComponent TO ROUND(VDOT(shipvec, eastVector)).
 
-set angleoffset to 8.
+set angleoffset to 8.  
 set maxarmangle to 56.8.  
-set epsilon to 0.00001.   
+set epsilon to 0.00001.  
 set catch to false.
 set endflight to false.
 
-set dt to 0.04.
+set dt to 0.04. 
 
 wait until sh:verticalspeed <=-10.
+
 //--Main--\\
 
 until endflight {
