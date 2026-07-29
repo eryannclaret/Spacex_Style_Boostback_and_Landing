@@ -7,14 +7,13 @@ runOncePath("lib").
 set doneprev to false.
 set donenext to false.
 set meco to 60000. // Boostback start altitude.
-set x to 0.// lngoff you want, in a real flight this would be set to have ~100 meter error
+set x to 0.// lngoff you want in real life it would be around -100 meters
 set cluster to ship:partsnamed("SEP.25.BOOSTER.CLUSTER")[0]:getmodule("ModuleSEPEngineSwitch").
 set dt to 0.2.
 set landingsite to targetland().
-
 LIST RESOURCES IN RESLIST.
 FOR RES IN RESLIST {
-    if RES:name = "LqdMethane" {    // Change lqdmethane to liquidfuel if you don't have methane
+    if RES:name = "LqdMethane" {     // Change it to LiquidFuel if you don't have kspcommmunity resources
       set maxlqdfuel to res:capacity.
     }
 }
@@ -33,20 +32,20 @@ when alt:radar >=meco-1000 then {
   lock throttle to 0.1.
 }
 
-//--Activator--\\
+//--Activation--\\
 
 wait until alt:radar >= meco.
 
-//--Other variables--\\
-set t1 to landingsite:position - getImpact():position. // Landingsite - your impact pos, needed for my throttle ratio formula
-set tin to abs(errorvector(landingsite):mag/ship:velocity:surface:mag/2).
 
+set t1 to landingsite:position - getImpact():position. // Landingsite - your impact pos, needed for the throttle calculation
+set tin to abs(errorvector(landingsite):mag/ship:velocity:surface:mag/2).
 //--longitude and latitude offset in meters--\\
 
 lock lngoff to (landingsite:LNG - ADDONS:TR:IMPACTPOS:LNG)*10472. 
 lock latoff to (landingsite:LAT - ADDONS:TR:IMPACTPOS:LAT)*10472. 
 brakes on. // Gridfins
 
+// Orientation of the booster
 set deltaLng to landingsite:lng - ship:geoposition:lng.
 
 if deltaLng > 180 {
@@ -61,7 +60,8 @@ if deltaLng > 0 {
 } else {
     set k to 1.
 }
-// flip after separation your roll needs to be QD facing up (if you using mechjeb2 uncheck the parameter that forces the roll to a certain degree)
+
+// flip, you need to be rotated QD facing space
 until vang(heading(k*landingsite:heading,0):vector,ship:facing:forevector) <= 20 {
     unlock steering.
     set ship:control:top to 1.
@@ -82,7 +82,7 @@ until lngoff > x or AG10 {
 
     //--Engines--\\
 
-    if abs(lngoff) <=50 and donenext = false {
+    if abs(lngoff) <=50 and donenext = false { 
         cluster:doevent("next engine mode").
         set dt to 0.05.
         toggle ag8.
@@ -91,9 +91,9 @@ until lngoff > x or AG10 {
 
     //--Steering--\\
     
-    set nv to corr + 15* tsvl. // 15 works well, feel free to change
+    set nv to corr + 15* tsvl. // Change 15 for more or less corrections
 
-    if abs(getimpact():lat) - abs(landingsite:lat) < 0 { // Vessel orientation 
+    if abs(getimpact():lat) - abs(landingsite:lat) < 0 {
         set ang to vang(corr, nv).
     } else {
         set ang to -vang(corr, nv).
@@ -109,11 +109,11 @@ until lngoff > x or AG10 {
         local str is round(cos(ship:facing:roll)).
         local tp is round(sin(ship:facing:roll)). 
         local t is abs(errorvector(landingsite):mag/ship:velocity:surface:mag).
-        local fcalc is (ship:lqdmethane-(0.02*maxlqdfuel))/16192.5. // your fuel - 2% of the max / (drain speed). Change ship:lqdmethane to ship:liquidfuel if you don't have methane
+        local fcalc is (ship:lqdmethane-(0.03*maxlqdfuel))/(16192.5). // your fuel - 3% of the max / drain speed
 
         // Fuel drain
         if round(fcalc) <= abs(round(tin)-round(t)) {
-            if ship:lqdmethane >=0.02*maxlqdfuel {
+            if ship:lqdmethane >=0.03*maxlqdfuel {
                 ag7 on.
             } else {
                 ag8 on.
@@ -139,5 +139,5 @@ lock throttle to 0.
 set ship:control:starboard to 0.
 set ship:control:top to 0.
 clearscreen.
-
+print errorVector(landingsite):mag + "Meters precise".
 stage. // HSR
